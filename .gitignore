@@ -19,4 +19,11 @@
 /target/
 **/target/
 
+/build
+/build/
+**/build/
+
+.gradle
+
+
 .DS_Store

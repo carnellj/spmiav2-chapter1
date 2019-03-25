@@ -1,11 +1,13 @@
 plugins {
 	id 'org.springframework.boot' version '2.1.3.RELEASE'
 	id 'java'
+	id 'com.bmuschko.docker-remote-api' version '4.6.2'
 }
 
 apply plugin: 'java'
 apply plugin: 'org.springframework.boot' 
 apply plugin: 'io.spring.dependency-management'
+apply plugin: 'com.bmuschko.docker-remote-api'
 
 group = 'com.thoughtmechanix'
 version = '0.0.1-SNAPSHOT'
@@ -15,13 +17,99 @@ repositories {
 	mavenCentral()
 }
 
+//Adding to include the source code for the integrationtests
+sourceSets {
+	integrationTest {
+		java {
+			compileClasspath += main.output + test.output
+			runtimeClasspath += main.output + test.output
+			srcDir file('src/integrationTest/java')
+		}
+		resources.srcDir file('src/integrationTest/resources')
+	}
+}
+
+//Including config for integration tests
+configurations {
+	integrationTestCompile.extendsFrom testCompile
+	integrationTestRuntime.extendsFrom testRuntime
+}
+
+//Defining the integration test
+task integrationTest(type: Test) {
+	testClassesDirs = sourceSets.integrationTest.output.classesDirs
+	classpath = sourceSets.integrationTest.runtimeClasspath
+	mustRunAfter test
+}
+
+task copyDockerFile(dependsOn: bootJar, type: Copy){
+  from("src/main/docker"){
+	  include "*"
+  }
+  from("build/libs"){
+	  include "/simpleservice-0.0.1-SNAPSHOT.jar"
+  }
+  into "build/docker"
+}
+
 bootJar {
 	mainClassName = 'com.thoughtmechanix.simpleservice.Application'
 }
+
+//Adding how dependencies
+check.dependsOn integrationTest
+
 
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-dependencies:2.1.3.RELEASE'
 	implementation 'org.springframework.boot:spring-boot-starter'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	integrationTestImplementation  'org.springframework.boot:spring-boot-starter-test'
+	integrationTestImplementation 'org.springframework.boot:spring-boot-starter-web'
 }
+
+//Adding the Docker Configuration
+docker {
+	registryCredentials {
+		username = getConfigurationProperty('DOCKER_USERNAME', 'docker.username')
+		password = getConfigurationProperty('DOCKER_PASSWORD', 'docker.password')
+		email = getConfigurationProperty('DOCKER_EMAIL', 'docker.email')
+	}
+}
+
+String getConfigurationProperty(String envVar, String sysProp) {
+	System.getenv(envVar) ?: project.findProperty(sysProp)
+}
+
+import com.bmuschko.gradle.docker.tasks.image.DockerBuildImage
+
+task buildImage(type: DockerBuildImage) {
+	inputDir = new File("build/docker")
+	tags = ["johncarnell/tmxv2-simple-service:chapter1"]
+}
+
+//tasks.create('createDockerfile', Dockerfile) {
+//	from('openjdk:11.0.2-jre-slim')
+//	runCommand('apk update && apk upgrade && apk add netcat-openbsd  && apk add curl')
+//	runCommand('mkdir -p /usr/local/simple-service')
+//	copyFile('simpleService.jar', '/usr/local/simple-service/simpleservice.jar')
+//	entryPoint('java')
+//	defaultCommand('-jar', '/usr/local/simple-service/simpleservice.jar')
+//}
+//
+//tasks.create('buildImage', DockerBuildImage) {
+//	dependsOn('createDockerfile')
+//	inputDir(createDockerfile.destFile.parentFile)
+//	tag("bmuschko/account-web-service:$jar.version")
+//}
+
+//task syncWebAppArchive(type: Sync) {
+//	dependsOn assemble
+//	from jar.archivePath
+//	into createDockerfile.destFile.parentFile
+//}
+//
+//createDockerfile.dependsOn syncWebAppArchive
+
+
